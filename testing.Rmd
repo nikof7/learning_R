@@ -1,0 +1,135 @@
+---
+title: "Aprendiendo R"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r include=FALSE}
+library(tidyverse)
+library(readr)
+library(lubridate)
+library(ggplot2)
+```
+
+- [Objetivos](#objetivos)
+- [Primeros pasos](#primeros-pasos)
+
+## Objetivos
+
+En orden de importancia:
+
+- Mejorar el uso de tidyverse
+- Manejo de dataframes
+- Utilización de herramientas para visualizar información
+  - Markdown
+  - ggplot2
+  - Shiny
+
+Quiero obtener de la columna time_observed_at, de formato "yyyy-mm-dd hh-mm-ss UTC", la información del mes y crear otra columna con esa información.
+
+## Primeros pasos
+
+Cargo base de datos:
+```{r echo = T, results = 'hide'}
+data_inat <- read_csv("data_inat.csv", show_col_types = FALSE)
+```
+
+Cargo ciertas columnas y elimino observaciones sin fecha:
+```{r}
+data_inat <- data_inat %>% 
+  select(., scientific_name, common_name, time_observed_at) %>%
+  # Elimina las filas que no tengan fecha
+  filter(., !time_observed_at == "")
+```
+
+Visualizo tabla hasta ahora:
+```{r echo=TRUE}
+head(data_inat)
+```
+
+Agrego una columna nueva, donde a partir de la fecha de observación obtengo el número de mes.
+```{r}
+data_inat <- data_inat%>% 
+  mutate(., month_observed_at = as.character(month(time_observed_at)))
+```
+
+Ahora la tabla se ve algo así:
+```{r echo=FALSE}
+head(data_inat)
+```
+
+Con esta nueva forma de visualizar la información puedo visualizar en que meses se observa más veces una determinada especie.
+
+Sin hacer una nueva tabla:
+
+```{r eval=FALSE, include=FALSE}
+data_inat %>% 
+  filter(., scientific_name == "")
+  barplot(.$month_observed_at, .$scientific_name)
+```
+
+---
+
+Necesito contar cuántas observaciones hay por especie. Y también ver en promedio que mes es en el que más se las encuentra.
+```{r}
+# Para contar n° de obs por especie
+new_inat_data <- data_inat %>%
+  count(scientific_name)
+
+new_inat_data
+```
+
+Promedia en que mes tiene más observaciones Salvator merianae
+```{r}
+data_inat %>% 
+  filter(., .$scientific_name=="Salvator merianae") %>% 
+  select(month_observed_at) %>% 
+  summarise(., avg = mean(month_observed_at))
+```
+
+Ahora deberíamos integrar estas dos "herramientas". Crearemos una tabla nueva, donde este el nombre científico del animal junto con el n de observaciones y en que mes se le vio más.
+
+Este loop es muy asqueroso, pero fue la idea que se me ocurrió.
+sc_name es el nombre de cada especie única.
+
+No se puede usar el promedio, porque necesitamos contar cuántas veces se repiten los meses para cada animal. Por ejemplo, un animal se observó los meses de (1,6,6,5,3,8,9,6,6) podemos ver que se repite más veces el 6, por lo que sería más común encontrarnos al animal en el mes 6. Pero para calcular ese número no podemos usar un promedio, ni una moda, ni una mediana. Necesitamos el elemento más común, el que más se repita dentro de un vector. Pero no pude hacerlo, por lo que dejo el uso del mean() para no trancarme más. Para que funcione la columna de month_observed_at tiene que ser integer.
+```{r eval=FALSE}
+new_inat_data <- new_inat_data %>% 
+  add_column(month_mean = NA)
+
+for (sc_name in unique(data_inat$scientific_name)) {
+  month_mean_ <- data_inat %>% 
+    filter(., .$scientific_name==sc_name) %>% 
+    select(month_observed_at) %>% 
+    summarise(., avg = round(mean(month_observed_at))) %>% 
+    as.integer()
+  
+  new_inat_data <- new_inat_data %>%
+    mutate(month_mean = ifelse( 
+      scientific_name == sc_name,
+      month_mean_,
+      month_mean))
+}
+new_inat_data
+```
+
+---
+
+Volvamos a utilizar la tabla de inat_data, intentemos graficar para el Lagarto Overo la cantidad de observaciones a lo largo de un año.
+
+```{r}
+n_meses <- c("1","2","3","4","5","6","7","8","9","10","11","12")
+
+data_inat %>% 
+  select(scientific_name, month_observed_at) %>% 
+  filter(scientific_name == "Salvator merianae") %>%
+  arrange(., month_observed_at) %>% 
+  ggplot(., aes(month_observed_at)) +
+    geom_bar(fill = "#0073C2FF") +
+    scale_x_discrete(name ="Meses", limits=c(n_meses)) +
+    scale_y_continuous(name ="Veces visto")
+  
+  
+```
+
